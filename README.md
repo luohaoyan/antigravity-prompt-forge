@@ -13,14 +13,31 @@
 | 🛡️ **四层** | 受保护 Token 校验 — `@file`、路径、URL、代码块一字不改 |
 | 🔌 **五层** | 零配置可用 — 不填 API Key 也能增强 |
 
-[![Release](https://img.shields.io/badge/release-v1.5.0-6c8cff)](../../releases) [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE) [![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-0078D4)]()
+[![Release](https://img.shields.io/badge/release-v1.5.0-6c8cff)](../../releases) [![Antigravity](https://img.shields.io/badge/Antigravity-2.31.0-4285F4)](https://antigravity.google/) [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE) [![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-0078D4)]()
 
 ---
 
+## 实机效果
+
+> 以下截图来自 **Antigravity 2.31.0**（`ProductVersion 2.31.0.0`，Windows 11）+ 中文汉化版 asar，均为真实运行截图，非示意图。
+
+| ① 输入框内联按钮 | ② 点击后立即改写 |
+|---|---|
+| ![按钮](docs/screenshots/01-button-before.png) | ![增强后](docs/screenshots/02-after-enhance.png) |
+
+| ③ 改写结果（保留意图、补全约束） | ④ 右键设置面板 |
+|---|---|
+| ![结果](docs/screenshots/03-enhanced-result.png) | ![设置](docs/screenshots/04-settings-panel.png) |
+
+上图的效果路径：草稿 `你好,帮我用python写一个冒泡排序` → 点 ✨ 增强 → 调用你配置的端点（示例为 DeepSeek `deepseek-flash`）→ 结果**原地回填**到输入框，按钮变成 `↩ 还原`，再点一次即可精确恢复原文。
+
+---
 ## 目录
 
+- [实机效果](#实机效果)
 - [它解决什么问题](#它解决什么问题)
 - [30 秒安装](#30-秒安装)
+- [换台电脑 / 全自动部署](#换台电脑--全自动部署)
 - [三种用法](#三种用法)
 - [右键设置面板](#右键设置面板)
 - [四种增强风格](#四种增强风格)
@@ -76,6 +93,23 @@ Antigravity 的输入框没有提示词增强能力，而插件生态（`~/.gemi
   ✅ 已写入 app.asar (22301804 bytes)
   ✅ 已启动。
 ```
+
+### 换台电脑 / 全自动部署
+
+一句话：**按钮是改过 `app.asar` 的注入脚本，每台电脑都要各自装一次**。全自动脚本：
+
+```bat
+:: 无人值守：自动装 Node(winget) → 备份存档 → 注入 → 装插件 → 冻结更新 → 启动 → 自检
+powershell -NoProfile -ExecutionPolicy Bypass -File .\oneclick.ps1 -Auto
+```
+
+| 脚本 | 用途 |
+|---|---|
+| `oneclick.ps1` | 全流程部署；`-Auto` 无人值守、`-NoLaunch` 不启动、`-PluginOnly` 只装插件、`-SkipBackup` 跳过备份 |
+| `doctor.bat` | 体检：路径 / asar 大小 / 备份 / 存档 / 环境变量 / 进程 |
+| `reinstall-after-update.bat` | 反重力更新后按钮消失 → 先回滚再重新注入（可选冻结更新） |
+
+多机部署细节、路线 C（对方装不了 Node 时直接拷补丁 asar）、同步清单见 [docs/OTHER-PC.md](docs/OTHER-PC.md)。
 
 ### 只想体检 / 只想装插件
 

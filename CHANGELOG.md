@@ -2,6 +2,19 @@
 
 遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.6.0] - 2026-11-15
+
+### 新增
+- `oneclick.ps1`：全自动部署（清宿主环境变量 → 自动装 Node(winget) → 备份存档 → 体检 → 注入 → 装插件 → 冻结更新 → 启动 → 自检），支持 `-Auto` / `-NoLaunch` / `-PluginOnly` / `-SkipBackup` / `-ZipPath`。
+- `doctor.bat`：一键体检（安装路径、asar 大小、备份、存档数量、环境变量、进程状态）。
+- `reinstall-after-update.bat`：反重力更新后一键「回滚 + 重新注入 + 可选冻结更新」。
+- `install.mjs --freeze-update`：冻结自动更新（`app-update.yml` 指向死地址 + `autoCheckForUpdates=false`）。
+- `docs/OTHER-PC.md`：换机/多机部署指南，含「对方装不了 Node」时直接拷补丁 asar 的路线 C 与同步清单。
+- `docs/screenshots/`：Antigravity 2.31.0 实机截图 4 张（按钮、增强结果、设置面板），README 增加实机效果图廊。
+
+### 变更
+- README 增加 Antigravity 版本徽章（2.31.0）与实机截图区块。
+
 ## [1.5.0] - 2026-11-15
 
 ### 新增

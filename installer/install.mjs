@@ -8,6 +8,7 @@
  *   node install.mjs --rollback      # 回滚到安装前的 app.asar
  *   node install.mjs --plugin-only   # 只装 .gemini 插件（不碰 app.asar）
  *   node install.mjs --uninstall     # 移除插件（app.asar 用 --rollback 回滚）
+ *   node install.mjs --freeze-update # 冻结自动更新（app-update.yml 指向死地址 + 关掉自动检查）
  *
  * 设计原则:
  *  1) 绝不删除用户对话存档（.gemini/antigravity/conversations 等）——本脚本从不写这些目录；
@@ -36,6 +37,7 @@ const MODE_CHECK = ARGS.has('--check');
 const MODE_ROLLBACK = ARGS.has('--rollback');
 const MODE_PLUGIN_ONLY = ARGS.has('--plugin-only');
 const MODE_UNINSTALL = ARGS.has('--uninstall');
+const MODE_FREEZE = ARGS.has('--freeze-update');
 
 const C = {
   ok: (s) => console.log('  \u2705 ' + s),
@@ -169,6 +171,36 @@ function rollback(ag) {
   return true;
 }
 
+function freezeUpdate(ag) {
+  C.head('[更新] 冻结自动更新（防止升级覆盖按钮）');
+  if (!ag) { C.err('找不到反重力安装目录'); return false; }
+  const yml = join(ag.resources, 'app-update.yml');
+  const orig = yml + '.original';
+  if (!existsSync(yml)) { C.err('找不到 app-update.yml'); return false; }
+  if (!existsSync(orig)) { copyFileSync(yml, orig); C.ok('已备份 → ' + orig); }
+  const raw = readFileSync(yml, 'utf-8');
+  const next = raw.replace(/^url:.*$/m, 'url: http://127.0.0.1:1/disabled/');
+  if (next === raw) C.info('更新地址已是冻结状态');
+  writeFileSync(yml, next, 'utf-8');
+  C.ok('app-update.yml 已指向死地址');
+  const storage = join(HOME, 'AppData', 'Roaming', 'Antigravity', 'app_storage.json');
+  if (existsSync(storage)) {
+    try {
+      const j = JSON.parse(readFileSync(storage, 'utf-8'));
+      j.autoCheckForUpdates = 'false';
+      writeFileSync(storage, JSON.stringify(j, null, 2), 'utf-8');
+      C.ok('app_storage.json autoCheckForUpdates=false');
+    } catch { C.warn('app_storage.json 解析失败，跳过'); }
+  }
+  return true;
+}
+
+function appVersion(ag) {
+  try {
+    return JSON.parse(readFileSync(join(ag.resources, 'app.asar'), 'utf-8').slice(0, 0) || '{}');
+  } catch { return null; }
+}
+
 function report(ag) {
   C.head('[体检] 环境状态');
   if (!ag) { C.err('未找到反重力安装目录（Antigravity.exe + resources/app.asar）'); }
@@ -201,6 +233,7 @@ function main() {
   if (MODE_CHECK) { C.head('仅体检模式，未修改任何文件'); return; }
   if (MODE_ROLLBACK) { if (!ag) return; rollback(ag); if (ag) launch(ag.exe); return; }
   if (MODE_UNINSTALL) { removePlugin(); C.info('如需移除按钮: node install.mjs --rollback'); return; }
+  if (MODE_FREEZE) { freezeUpdate(ag); return; }
 
   let ok = true;
   if (!MODE_PLUGIN_ONLY) {
