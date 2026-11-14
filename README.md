@@ -21,13 +21,28 @@
 
 > 以下截图来自 **Antigravity 2.31.0**（`ProductVersion 2.31.0.0`，Windows 11）+ 中文汉化版 asar，均为真实运行截图，非示意图。
 
-| ① 输入框内联按钮 | ② 点击后立即改写 |
-|---|---|
-| ![按钮](docs/screenshots/01-button-before.png) | ![增强后](docs/screenshots/02-after-enhance.png) |
+![总览：输入框按钮 / 点击改写 / 改写结果 / 设置面板](docs/screenshots/01-button-before.png)
 
-| ③ 改写结果（保留意图、补全约束） | ④ 右键设置面板 |
-|---|---|
-| ![结果](docs/screenshots/03-enhanced-result.png) | ![设置](docs/screenshots/04-settings-panel.png) |
+<details open>
+<summary><b>① 输入框内联按钮</b> — ✨ 增强 嵌在输入框工具行、<code>[请求审核]</code> 左侧</summary>
+
+![输入框内联按钮](docs/screenshots/02-after-enhance.png)
+
+</details>
+
+<details open>
+<summary><b>② 点击后立即改写</b> — 结果原地回填，按钮变 <code>↩ 还原</code></summary>
+
+![点击后立即改写](docs/screenshots/03-enhanced-result.png)
+
+</details>
+
+<details open>
+<summary><b>③ 右键设置面板</b> — 协议 / Base URL / API Key / 模型 / 风格 / System Prompt</summary>
+
+![设置面板](docs/screenshots/04-settings-panel.png)
+
+</details>
 
 上图的效果路径：草稿 `你好,帮我用python写一个冒泡排序` → 点 ✨ 增强 → 调用你配置的端点（示例为 DeepSeek `deepseek-flash`）→ 结果**原地回填**到输入框，按钮变成 `↩ 还原`，再点一次即可精确恢复原文。
 
