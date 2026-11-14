@@ -1,7 +1,7 @@
 {
   "name": "antigravity-prompt-forge-installer",
   "private": true,
-  "version": "1.5.0",
+  "version": "1.7.0",
   "type": "module",
   "description": "Installer deps for patching Antigravity app.asar",
   "dependencies": {

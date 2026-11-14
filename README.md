@@ -23,6 +23,8 @@
 
 ![设置面板](docs/screenshots/04-settings-panel.png)
 
+**模型下拉 + 从上游导入**：点「⇩ 导入」会用当前 Base URL / API Key 请求上游 `/models`，把可用模型灌进下拉，省得手打模型名拼错。面板只会在点 ✕ / 保存 / Esc 时关闭 —— 拖选文本时鼠标滑出卡片不会误关。
+
 右键输入框旁的 ✨ 增强 即可打开设置面板：协议 / Base URL / API Key / 模型 / 预设风格 / System Prompt，配置保存在反重力的 `app_storage.json`，**换端口、重启、重新登录都不会丢失**。
 
 ---

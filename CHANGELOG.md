@@ -2,6 +2,18 @@
 
 遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.7.0] - 2026-11-15
+
+### 新增
+- **模型下拉 + 从上游导入**：设置面板的「模型」改成「下拉 + 手动输入 + ⇩ 导入」三件套。点「导入」会用当前的 Base URL / API Key 请求 `/models`（Anthropic 走 `/v1/models` 并带 `anthropic-version`，Gemini 走 `/models` 并剥掉 `models/` 前缀），把可用模型灌进下拉，省得手打模型名拼错。
+
+### 修复
+- **窗口不再被误关**：以前点击遮罩（卡片外的半透明区域）就会关闭面板，复制粘贴时鼠标稍微拖出卡片范围就整窗消失、已填内容全丢。现在只有 ✕ 按钮、保存按钮或 Esc 才会关闭。
+- **重新登录后配置不再丢失**：
+  - 根因一：设置面板读的是同步缓存，`app_storage.json` 的异步回填还没完成时打开面板，字段显示为空，一按保存就把空 Key 写回去覆盖了。现在 `saveSettings` 发现「新值为空但旧值有 Key」时自动保留旧 Key。
+  - 根因二：插件钩子（`PreInvocation`）读的是插件自己的 `data/settings.json`，与输入框面板写的 `app_storage.json` 是两套存储，面板里配好的 Key 钩子路径读不到。现在 `loadSettings()` 先读 `app_storage.json` 里 `antigravity.promptOptimize.settings.v2` 这一份，再用插件自己的文件补齐 `autoEnhanceAll` 等字段。
+  - 回填失败不再被永久缓存：`hydrateSettings()` 的失败结果会重置，下次调用可重试。
+
 ## [1.6.0] - 2026-11-15
 
 ### 新增

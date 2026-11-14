@@ -98,12 +98,51 @@ export function ensureDataDir() {
   }
 }
 
+/**
+ * 反重力把宿主级配置存在 %APPDATA%\Antigravity\app_storage.json（端口无关、跨登录）。
+ * 输入框里的 ✨ 面板写的就是这个键，所以这里必须先读它，否则
+ * 「面板里配好了 Key，但钩子路径读不到」—— 表现为重新登录后配置丢失。
+ */
+export const NATIVE_SETTINGS_KEY = 'antigravity.promptOptimize.settings.v2';
+
+function nativeStoragePath() {
+  const appData = process.env.APPDATA
+    || (process.platform === 'darwin'
+      ? join(process.env.HOME || '', 'Library', 'Application Support')
+      : join(process.env.HOME || '', '.config'));
+  return join(appData, 'Antigravity', 'app_storage.json');
+}
+
+function readNativeSettings() {
+  try {
+    const file = nativeStoragePath();
+    if (!existsSync(file)) return null;
+    const all = JSON.parse(readFileSync(file, 'utf-8'));
+    const raw = all && all[NATIVE_SETTINGS_KEY];
+    if (typeof raw !== 'string') return null;
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
 export function loadSettings() {
   const base = defaultSettings();
   try {
-    if (!existsSync(SETTINGS_FILE)) return base;
-    const raw = readFileSync(SETTINGS_FILE, 'utf-8');
-    const parsed = JSON.parse(raw);
+    let parsed = null;
+    // 1) 输入框 ✨ 面板写的那份（跨登录保留）优先
+    const native = readNativeSettings();
+    if (native) parsed = native;
+    // 2) 插件自己的 settings.json 补足面板没有覆盖的字段（autoEnhanceAll 等）
+    if (existsSync(SETTINGS_FILE)) {
+      try {
+        const own = JSON.parse(readFileSync(SETTINGS_FILE, 'utf-8'));
+        if (own && typeof own === 'object') parsed = { ...own, ...(parsed || {}) };
+      } catch {
+        /* 插件文件坏了就用面板那份 */
+      }
+    }
     if (!parsed || typeof parsed !== 'object') return base;
     const protocol = ['openai', 'anthropic', 'gemini'].includes(parsed.protocol) ? parsed.protocol : 'openai';
     const style = ['enhanced', 'coding', 'structured', 'concise'].includes(parsed.style) ? parsed.style : 'enhanced';

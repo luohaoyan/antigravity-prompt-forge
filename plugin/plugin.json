@@ -1,7 +1,7 @@
 {
   "name": "prompt-optimize",
   "displayName": "Prompt Optimize (提示词增强)",
-  "version": "1.5.0",
+  "version": "1.7.0",
   "description": "提示词增强套件：对话框 ✨/++ 前缀自动强化、/prompt-optimize 斜杠命令、侧边栏一键增强与还原、OpenAI/Anthropic/Gemini 及任意 OpenAI 兼容端点配置。移植自 Codex++ Script Market (Prompt Optimize + 增强提示词)。",
   "author": {
     "name": "Codex++ Community & Meowv (Antigravity Port)",

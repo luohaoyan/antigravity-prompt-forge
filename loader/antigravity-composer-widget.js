@@ -134,6 +134,63 @@
     return out;
   }
 
+  // ---------------------------------------------------------------------------
+  // 持久化：localStorage 是「按源(origin)隔离」的，而反重力每次启动都会用随机端口
+  // 起本地语言服务器（origin 形如 https://127.0.0.1:<随机端口>），换端口就等于换了
+  // 一个全新的 origin，localStorage 读到的是空的 —— 这不是重新登录导致的，而是
+  // 每次重启/重连都如此。所以真正的存储必须是「端口无关」的：
+  //   window.nativeStorage（preload 暴露）→ 落到 %APPDATA%\Antigravity\app_storage.json
+  // 这个文件跟登录态、端口都无关，重新登录后依然存在。
+  // localStorage 仍然保留，只当同步缓存用（打开面板时能立即出值，不必等异步）。
+  // ---------------------------------------------------------------------------
+  var NATIVE_STORAGE_KEY = SETTINGS_KEY;
+  var nativeCache = null;         // nativeStorage 里的最新原始 JSON 字符串
+  var nativeHydratePromise = null; // 一次性 hydrate 的 promise
+
+  function hasNativeStorage() {
+    try {
+      var ns = window.nativeStorage;
+      return !!(ns && typeof ns.getItems === "function" && typeof ns.updateItems === "function");
+    } catch (_e) { return false; }
+  }
+
+  function parseSettingsRaw(raw) {
+    if (!raw || typeof raw !== "string") return null;
+    try {
+      var p = JSON.parse(raw);
+      return p && typeof p === "object" && !Array.isArray(p) ? p : null;
+    } catch (_e) { return null; }
+  }
+
+  /** 从 nativeStorage 拉取一次配置，写回 nativeCache + localStorage 缓存。 */
+  function hydrateSettings() {
+    if (nativeHydratePromise) return nativeHydratePromise;
+    if (!hasNativeStorage()) { nativeHydratePromise = Promise.resolve(null); return nativeHydratePromise; }
+    nativeHydratePromise = Promise.resolve()
+      .then(function () { return window.nativeStorage.getItems(); })
+      .then(function (items) {
+        if (!items || typeof items !== "object") return null;
+        var v = items[NATIVE_STORAGE_KEY];
+        if (typeof v !== "string" || !parseSettingsRaw(v)) return null;
+        nativeCache = v;
+        try { window.localStorage.setItem(SETTINGS_KEY, v); } catch (_e) {}
+        return parseSettingsRaw(v);
+      })
+      .catch(function () { nativeHydratePromise = null; return null; });
+    return nativeHydratePromise;
+  }
+
+  /** 把当前配置镜像到 nativeStorage（端口无关的持久层）。 */
+  function persistSettings(raw) {
+    nativeCache = raw;
+    if (!hasNativeStorage()) return;
+    try {
+      var patch = {};
+      patch[NATIVE_STORAGE_KEY] = raw;
+      void Promise.resolve(window.nativeStorage.updateItems(patch)).catch(function () {});
+    } catch (_e) {}
+  }
+
   function loadSettings() {
     var base = {
       protocol: "openai",
@@ -144,8 +201,9 @@
       fallbackPrefixMode: true,
       systemPrompts: deepMergePrompts(null)
     };
-    var raw = null;
-    try { raw = window.localStorage.getItem(SETTINGS_KEY); } catch (_e) { raw = null; }
+    // 读取顺序：nativeStorage 已 hydrate 的值 → localStorage（同端口缓存 / 旧版遗留）→ 宿主注入
+    var raw = nativeCache;
+    try { if (!raw) raw = window.localStorage.getItem(SETTINGS_KEY); } catch (_e) { raw = null; }
     if (!raw) {
       try {
         var host = window.__AG_PLUGIN_SETTINGS_V1;
@@ -164,7 +222,20 @@
   }
 
   function saveSettings(next) {
-    try { window.localStorage.setItem(SETTINGS_KEY, JSON.stringify(next)); } catch (_e) {}
+    var raw = null;
+    try { raw = JSON.stringify(next); } catch (_e) { raw = null; }
+    if (!raw) return;
+    // 防护：把已有 API Key 覆盖成空（重新登录 / 面板在 hydrate 完成前被打开时最容易发生）
+    // 时，保留旧 Key，避免「配置被清空」。
+    try {
+      var prev = parseSettingsRaw(nativeCache) || parseSettingsRaw(window.localStorage.getItem(SETTINGS_KEY));
+      if (prev && !String(next.apiKey || "").trim() && String(prev.apiKey || "").trim()) {
+        next.apiKey = prev.apiKey;
+        raw = JSON.stringify(next);
+      }
+    } catch (_e2) {}
+    try { window.localStorage.setItem(SETTINGS_KEY, raw); } catch (_e) {}
+    persistSettings(raw);
   }
 
   // ---------- 样式 ----------
@@ -187,7 +258,16 @@
       "[" + PANEL_ATTR + "] .ag-card { width: min(540px, calc(100vw - 24px)); max-height: 86vh; overflow: auto; background: #18181b;" +
       " border: 1px solid rgba(255,255,255,0.14); border-radius: 14px; padding: 16px; box-shadow: 0 20px 50px rgba(0,0,0,0.55);" +
       " color: #e4e4e7; font: 13px/1.5 system-ui, sans-serif; }" +
-      "[" + PANEL_ATTR + "] h3 { margin: 0 0 12px; font-size: 14px; }" +
+      "[" + PANEL_ATTR + "] .ag-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }" +
+      "[" + PANEL_ATTR + "] h3 { margin: 0; font-size: 14px; }" +
+      "[" + PANEL_ATTR + "] .ag-x { width: 26px; height: 26px; padding: 0; display: inline-flex; align-items: center;" +
+      " justify-content: center; background: transparent; border: 1px solid transparent; border-radius: 6px;" +
+      " color: #a1a1aa; font-size: 16px; line-height: 1; }" +
+      "[" + PANEL_ATTR + "] .ag-x:hover { background: #3f3f46; color: #fff; border-color: rgba(255,255,255,0.2); }" +
+      "[" + PANEL_ATTR + "] .ag-field { display: grid; gap: 4px; margin-bottom: 10px; font-size: 12px; color: #d4d4d8; }" +
+      "[" + PANEL_ATTR + "] .ag-inline { display: flex; gap: 6px; align-items: center; }" +
+      "[" + PANEL_ATTR + "] .ag-inline select, [" + PANEL_ATTR + "] .ag-inline input { flex: 1 1 auto; min-width: 0; }" +
+      "[" + PANEL_ATTR + "] .ag-inline button { flex: 0 0 auto; padding: 7px 10px; white-space: nowrap; }" +
       "[" + PANEL_ATTR + "] label { display: grid; gap: 4px; margin-bottom: 10px; font-size: 12px; color: #d4d4d8; }" +
       "[" + PANEL_ATTR + "] input, [" + PANEL_ATTR + "] select, [" + PANEL_ATTR + "] textarea {" +
       " width: 100%; box-sizing: border-box; border-radius: 8px; border: 1px solid rgba(255,255,255,0.16);" +
@@ -515,6 +595,81 @@
     }
   }
 
+  // ---------- 模型候选 ----------
+  var MODEL_PRESETS = {
+    openai: ["gpt-4o-mini", "gpt-4o", "gpt-4.1-mini", "gpt-4.1", "o4-mini", "deepseek-chat", "deepseek-reasoner", "deepseek-flash"],
+    anthropic: ["claude-haiku-4-5-20251001", "claude-sonnet-4-5-20250929", "claude-opus-4-1-20250805"],
+    gemini: ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"]
+  };
+
+  /** 用给定候选重建下拉；保留当前选中值。 */
+  function fillModelOptions(sel, list, current) {
+    if (!sel) return;
+    var keep = current || sel.value || "";
+    var html = '<option value="">（选择模型 / 或手动输入）</option>';
+    for (var i = 0; i < list.length; i++) {
+      var m = String(list[i] || "").trim();
+      if (!m) continue;
+      html += '<option value="' + m.replace(/"/g, "&quot;") + '">' + m + "</option>";
+    }
+    sel.innerHTML = html;
+    var hit = false;
+    for (var j = 0; j < sel.options.length; j++) {
+      if (sel.options[j].value === keep) { sel.value = keep; hit = true; break; }
+    }
+    if (!hit) sel.value = "";
+  }
+
+  /** 按协议拼出 /models 端点。 */
+  function modelsEndpoint(baseUrl, protocol) {
+    var b = String(baseUrl || "").replace(/\/+$/, "");
+    if (protocol === "anthropic") return b + "/v1/models";
+    if (protocol === "gemini") return b + "/models";
+    return b + "/models";
+  }
+
+  /** 从上游拉取模型列表。返回字符串数组。 */
+  async function fetchUpstreamModels(cfg) {
+    var url = modelsEndpoint(cfg.baseUrl, cfg.protocol);
+    var headers = {};
+    if (cfg.protocol === "anthropic") {
+      headers["x-api-key"] = cfg.apiKey;
+      headers["anthropic-version"] = "2023-06-01";
+    } else if (cfg.protocol === "gemini") {
+      headers["x-goog-api-key"] = cfg.apiKey;
+    } else {
+      headers["Authorization"] = "Bearer " + cfg.apiKey;
+    }
+    var ctrl = typeof AbortController === "function" ? new AbortController() : null;
+    var timer = ctrl ? setTimeout(function () { try { ctrl.abort(); } catch (_e) {} }, 20000) : null;
+    var res;
+    try {
+      res = await fetch(url, { method: "GET", headers: headers, signal: ctrl ? ctrl.signal : undefined });
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+    if (!res.ok) throw new Error("HTTP " + res.status + " " + (await res.text().catch(function () { return ""; })).slice(0, 120));
+    var data = await res.json();
+    var arr = [];
+    if (data && Array.isArray(data.data)) {
+      for (var i = 0; i < data.data.length; i++) arr.push(data.data[i] && (data.data[i].id || data.data[i].name));
+    } else if (data && Array.isArray(data.models)) {
+      for (var k = 0; k < data.models.length; k++) {
+        var mm = data.models[k] || {};
+        var nm = mm.name || mm.id || "";
+        nm = String(nm).replace(/^models\//, "");
+        arr.push(nm);
+      }
+    }
+    var seen = {};
+    return arr.filter(function (x) {
+      x = String(x || "").trim();
+      if (!x || seen[x]) return false;
+      seen[x] = 1;
+      return true;
+    }).sort();
+  }
+
   // ---------- 设置面板 ----------
   function openSettingsModal() {
     try {
@@ -525,11 +680,16 @@
       modal.setAttribute(PANEL_ATTR, "true");
       modal.innerHTML =
         '<div class="ag-card">' +
-        "<h3>✨ Prompt Optimize 设置</h3>" +
+        '<div class="ag-head"><h3>✨ Prompt Optimize 设置</h3>' +
+        '<button class="ag-x" title="关闭" data-act="close">✕</button></div>' +
         '<label>协议<select data-k="protocol"><option value="openai">OpenAI 兼容</option><option value="anthropic">Anthropic</option><option value="gemini">Gemini</option></select></label>' +
         '<label>API Base URL<input type="url" data-k="baseUrl" placeholder="https://api.openai.com/v1"></label>' +
         '<label>API Key（留空则左键 ✨ 自动走内置钩子前缀模式）<input type="password" data-k="apiKey" placeholder="sk-..."></label>' +
-        '<label>模型<input type="text" data-k="model" placeholder="gpt-4o-mini"></label>' +
+        '<div class="ag-field"><span>模型</span><div class="ag-inline">' +
+        '<select data-k="modelSelect"><option value="">（选择模型 / 或手动输入）</option></select>' +
+        '<input type="text" data-k="model" placeholder="gpt-4o-mini">' +
+        '<button data-act="fetch-models" title="从当前 Base URL + API Key 拉取可用模型列表">⇩ 导入</button>' +
+        '</div></div>' +
         '<label>预设风格<select data-k="style"><option value="enhanced">enhanced（综合增强）</option><option value="coding">coding（编程）</option><option value="structured">structured（结构化）</option><option value="concise">concise（精简）</option></select></label>' +
         '<label>System Prompt（当前风格）<textarea data-k="sysPrompt" rows="6"></textarea></label>' +
         '<div class="ag-status" data-k="status"></div>' +
@@ -540,6 +700,19 @@
       q("baseUrl").value = s.baseUrl;
       q("apiKey").value = s.apiKey;
       q("model").value = s.model;
+      // 预设模型候选（可被「导入」按钮从上游覆盖）
+      fillModelOptions(q("modelSelect"), MODEL_PRESETS[s.protocol] || [], s.model);
+      q("modelSelect").addEventListener("change", function () {
+        if (q("modelSelect").value) q("model").value = q("modelSelect").value;
+      });
+      q("model").addEventListener("input", function () {
+        var v = q("model").value.trim();
+        var has = false;
+        for (var oi = 0; oi < q("modelSelect").options.length; oi++) {
+          if (q("modelSelect").options[oi].value === v) { has = true; break; }
+        }
+        q("modelSelect").value = has ? v : "";
+      });
       q("style").value = s.style;
       q("sysPrompt").value = (s.systemPrompts && s.systemPrompts[s.style]) || DEFAULT_PROMPTS[s.style] || "";
       var statusEl = q("status");
@@ -548,7 +721,9 @@
         var st = q("style").value;
         q("sysPrompt").value = (s.systemPrompts && s.systemPrompts[st]) || DEFAULT_PROMPTS[st] || "";
       });
-      modal.addEventListener("click", function (ev) { if (ev.target === modal) modal.remove(); });
+      // 点遮罩不再关闭：拖选文本时鼠标滑出卡片会误触。只有 ✕ 或 保存 才关闭。
+      modal.querySelector('[data-act="close"]').addEventListener("click", function () { modal.remove(); });
+      document.addEventListener("keydown", function escClose(ev) { if (ev.key === "Escape") { modal.remove(); document.removeEventListener("keydown", escClose); } });
 
       q("protocol").addEventListener("change", function () {
         var p = q("protocol").value;
@@ -565,6 +740,36 @@
           statusEl.textContent = "✅ 连接成功！返回: " + resp.slice(0, 40);
         } catch (err) {
           statusEl.textContent = "❌ 连接失败: " + (err && err.message ? err.message : String(err));
+        }
+      });
+
+      modal.querySelector('[data-act="fetch-models"]').addEventListener("click", async function () {
+        var btn = modal.querySelector('[data-act="fetch-models"]');
+        var cfg = {
+          protocol: q("protocol").value,
+          baseUrl: q("baseUrl").value.trim(),
+          apiKey: q("apiKey").value.trim()
+        };
+        if (!cfg.baseUrl) { statusEl.textContent = "❌ 请先填写 API Base URL"; return; }
+        if (!cfg.apiKey) { statusEl.textContent = "❌ 拉取模型列表需要 API Key"; return; }
+        btn.disabled = true;
+        var oldLabel = btn.textContent;
+        btn.textContent = "⏳ 拉取中";
+        statusEl.textContent = "⏳ 正在从 " + modelsEndpoint(cfg.baseUrl, cfg.protocol) + " 拉取模型列表…";
+        try {
+          var list = await fetchUpstreamModels(cfg);
+          if (!list.length) {
+            statusEl.textContent = "⚠️ 上游返回了空列表，保留内置候选";
+            fillModelOptions(q("modelSelect"), MODEL_PRESETS[cfg.protocol] || [], q("model").value);
+          } else {
+            fillModelOptions(q("modelSelect"), list, q("model").value);
+            statusEl.textContent = "✅ 已导入 " + list.length + " 个模型，可在下拉里选择";
+          }
+        } catch (err) {
+          statusEl.textContent = "❌ 拉取失败：" + (err && err.message ? err.message : String(err));
+        } finally {
+          btn.disabled = false;
+          btn.textContent = oldLabel;
         }
       });
 
@@ -657,6 +862,35 @@
     beginGeoEpoch();
     try { ensureHostAndButton(); } catch (_e) {}
 
+    // 0) 端口无关配置：从 app_storage.json 拉取一次，回填 localStorage 缓存，
+    //    让「换端口 / 重新登录」后仍然能读到之前配好的 API Key / 模型 / 风格。
+    try {
+      void hydrateSettings().then(function (s) {
+        if (!s) return;
+        try {
+          var b = document.querySelector("[" + BTN_ATTR + "]");
+          refreshButton(b || undefined);
+        } catch (_e) {}
+      });
+    } catch (_e) {}
+    // 跨窗口/跨端口同步：其它标签页或重启后的实例写入了配置，这里同步更新缓存
+    try {
+      if (hasNativeStorage() && typeof window.nativeStorage.onChanged === "function") {
+        window.nativeStorage.onChanged(function (changes) {
+          if (!changes || !(NATIVE_STORAGE_KEY in changes)) return;
+          var v = changes[NATIVE_STORAGE_KEY];
+          if (typeof v === "string" && parseSettingsRaw(v)) {
+            nativeCache = v;
+            try { window.localStorage.setItem(SETTINGS_KEY, v); } catch (_e) {}
+            try {
+              var b2 = document.querySelector("[" + BTN_ATTR + "]");
+              refreshButton(b2 || undefined);
+            } catch (_e2) {}
+          }
+        });
+      }
+    } catch (_e) {}
+
     // 1) 被动跟随：窗口尺寸变化 / 滚动（全部 passive + rAF 合并）
     window.addEventListener("resize", function () { beginGeoEpoch(); requestEnsure(true); }, { passive: true });
     document.addEventListener("scroll", function () { beginGeoEpoch(); requestEnsure(true); }, { passive: true, capture: true });
@@ -687,7 +921,7 @@
     window[INSTANCE_KEY] = {
       ensure: function () { beginGeoEpoch(); ensureHostAndButton(); },
       openSettings: openSettingsModal,
-      version: "1.4.0"
+      version: "1.5.0"
     };
   }
 
