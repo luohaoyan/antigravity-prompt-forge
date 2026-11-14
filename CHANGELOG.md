@@ -1,0 +1,46 @@
+# Changelog
+
+遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与 [语义化版本](https://semver.org/lang/zh-CN/)。
+
+## [1.5.0] - 2026-11-15
+
+### 新增
+- 通用安装器 `installer/install.mjs`：自动探测 Antigravity 安装路径，支持 `--check` / `--rollback` / `--plugin-only` / `--uninstall`。
+- `install.bat` / `check.bat` / `rollback.bat` 双击入口。
+- 归档为完整 GitHub 仓库结构：`plugin/`、`loader/`、`installer/`、`docs/`。
+- `docs/AI-PROMPTS.md`：8 组可直接喂给 AI 的安装/排障/二次开发提示词。
+- `docs/TROUBLESHOOTING.md`：按症状分流的排查手册（打不开 / 黑屏 / 写不回 / 前缀失效 / 更新回滚 / 存档恢复）。
+- 打包器支持 `--asar` / `--widget` / `--out` 参数，可用于任意安装路径与测试沙箱。
+
+### 修复
+- **输入框写回失效**：反重力 composer 为 Lexical 编辑器，`execCommand("insertText")` 返回 true 但内容被回滚。改用「合成 `Ctrl+A` keydown → 合成 `Backspace` keydown → 合成 `paste` (`DataTransfer` 带 `text/plain`)」的原生事件路径，实测写入与还原均精确可靠。
+- 安装器清理 `ELECTRON_RUN_AS_NODE` / `NODE_OPTIONS` / `ELECTRON_NO_ATTACH_CONSOLE`，避免从 Node 宿主启动时 Electron 以纯 Node 模式 `exit(0)`。
+- 打包注入器在找不到汉化锚点时降级为独立 runner，而不是直接失败。
+
+### 变更
+- `patch-composer-asar.mjs` 重写为无硬编码用户路径的 CLI，并优先使用本地 `@electron/asar`，找不到才回退 `npx`。
+
+## [1.4.0] - 2026-11-15
+
+### 修复
+- **窗口全黑 / 渲染卡死**：删除 `setInterval(ensureHostAndButton, 800)` 全文档轮询，移除第二个 `MutationObserver`（与汉化器互触发形成活锁）。改为由汉化器节流队列通过 `window.__AG_PROMPT_OPTIMIZE_SCHEDULE()` 被动唤醒。
+- 布局读取改为 geometry epoch 缓存，同一 tick 内每个元素的 `getBoundingClientRect` 只算一次。
+- CDP 响应延迟从 30s 超时降到 0–2ms。
+
+### 变更
+- 按钮定位改为"composer 卡片最底一行、右半区最左侧按钮的左侧"，跟随窗口缩放自动重排。
+
+## [1.3.0] - 2026-11-14
+
+### 新增
+- 首次实现底部输入框 `✨ 增强` 内联按钮与设置面板。
+
+### 已知问题
+- `setInterval` + 双 `MutationObserver` 导致活锁，窗口全黑（v1.4.0 修复）。
+- `execCommand` 写回在 Lexical 上被静默回滚（v1.5.0 修复）。
+
+## [1.2.0] - 2026-11-13
+
+### 新增
+- 插件运行时移植：`PreInvocation` 钩子、侧边栏面板、`/prompt-optimize` 技能、`✨`/`++`/`/opt` 前缀触发。
+- 四种增强风格（enhanced / coding / structured / concise）与受保护 Token 校验。

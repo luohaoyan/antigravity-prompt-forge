@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Prompt Optimize · 提示词增强</title>
+  <script src="/preload.js"></script>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="app">
+    <header class="header">
+      <div class="header-top">
+        <div class="brand">
+          <span class="brand-icon" aria-hidden="true">✨</span>
+          <div>
+            <h1 class="brand-title">Prompt Optimize</h1>
+            <p class="brand-sub">移植自 Codex++ Script Market · 提示词智能强化</p>
+          </div>
+        </div>
+        <span id="api-badge" class="badge badge-warn">未配置外部 API</span>
+      </div>
+
+      <nav class="tabs" role="tablist">
+        <button type="button" class="tab active" data-tab="composer" role="tab" aria-selected="true">✨ 增强工作台</button>
+        <button type="button" class="tab" data-tab="history" role="tab" aria-selected="false">🕘 历史与还原 <span id="hist-count" class="count">0</span></button>
+        <button type="button" class="tab" data-tab="settings" role="tab" aria-selected="false">⚙️ API 与规则设置</button>
+      </nav>
+    </header>
+
+    <!-- Tab 1: Composer -->
+    <main id="panel-composer" class="tab-panel active">
+      <div class="tip-card">
+        <div class="tip-title">💡 对话框极速用法（无需切出聊天框）</div>
+        <div class="tip-body">
+          直接在左侧反重力聊天输入框以 <code>✨ </code> 或 <code>++ </code> 开头发送消息（如 <code>✨ 帮我重构当前组件</code>），插件会自动拦截并强化提示词！也可在下方直接编辑、增强并一键发往当前对话。
+        </div>
+      </div>
+
+      <div class="toolbar-row">
+        <label class="field-inline">
+          <span>优化风格</span>
+          <select id="style-select">
+            <option value="enhanced">🌟 智能增强 (Meowv 语言一致版)</option>
+            <option value="coding">💻 编程任务 (Coding 规范版)</option>
+            <option value="structured">📐 结构化 (Role/Goal/Constraints)</option>
+            <option value="concise">⚡ 简洁紧致 (去冗余凝练版)</option>
+          </select>
+        </label>
+        <button type="button" id="btn-pull-last" class="btn btn-ghost btn-sm" title="从当前对话提取上一条发送的提示词">
+          📥 提取上条输入
+        </button>
+      </div>
+
+      <div class="editor-wrap">
+        <div class="editor-header">
+          <span id="editor-state-label" class="editor-label">输入提示词草稿</span>
+          <span id="token-guard-badge" class="token-badge hidden"></span>
+        </div>
+        <textarea id="prompt-input" rows="8" placeholder="在此输入你的提示词草稿（支持保留 @file 引用、代码块 ```、文件路径和 URL）...&#10;&#10;快捷键：Ctrl+Enter 一键优化 / 再次点击 ✨ 还原原文"></textarea>
+      </div>
+
+      <div id="warning-box" class="warning-box hidden"></div>
+
+      <div class="action-bar">
+        <button type="button" id="btn-optimize" class="btn btn-primary">
+          <span id="btn-optimize-icon">✨</span>
+          <span id="btn-optimize-text">一键优化提示词</span>
+        </button>
+        <button type="button" id="btn-restore" class="btn btn-secondary hidden" title="还原为优化前的原始草稿">
+          ↩ 还原原文
+        </button>
+        <button type="button" id="btn-local-struct" class="btn btn-ghost" title="无需外部 API Key，按编程结构化模板立刻加固并在发送时由反重力模型深度扩写">
+          ⚡ 免Key结构化
+        </button>
+      </div>
+
+      <div class="send-bar">
+        <button type="button" id="btn-send-chat" class="btn btn-accent">
+          🚀 直接发送至当前对话
+        </button>
+        <button type="button" id="btn-copy" class="btn btn-secondary">
+          📋 复制结果
+        </button>
+      </div>
+
+      <div id="diff-box" class="diff-box hidden">
+        <div class="diff-head">
+          <span>📄 优化前原稿备案（随时可点「还原原文」恢复）</span>
+          <button type="button" id="btn-copy-orig" class="btn-link">复制原稿</button>
+        </div>
+        <pre id="orig-preview" class="orig-preview"></pre>
+      </div>
+    </main>
+
+    <!-- Tab 2: History -->
+    <section id="panel-history" class="tab-panel">
+      <div class="section-head">
+        <span>最近增强记录（包含对话框钩子与面板记录）</span>
+        <button type="button" id="btn-clear-history" class="btn btn-ghost btn-sm">清空记录</button>
+      </div>
+      <div id="history-list" class="history-list"></div>
+    </section>
+
+    <!-- Tab 3: Settings -->
+    <section id="panel-settings" class="tab-panel">
+      <div class="form-grid">
+        <div class="setting-card">
+          <label class="switch-row">
+            <input type="checkbox" id="cfg-auto-enhance">
+            <span><strong>对话框发送时自动增强所有输入</strong>（开启后无需加 <code>✨</code> 或 <code>++</code> 前缀，每次发送自动增强）</span>
+          </label>
+          <label class="field">
+            <span>对话框触发前缀（逗号分隔）</span>
+            <input type="text" id="cfg-prefixes" placeholder="✨, ++, /opt ">
+          </label>
+        </div>
+
+        <label class="field">
+          <span>API 协议</span>
+          <select id="cfg-protocol">
+            <option value="openai">OpenAI 兼容 (/v1/chat/completions · 支持 DeepSeek/硅基流动/OneAPI)</option>
+            <option value="anthropic">Anthropic (/v1/messages · Claude)</option>
+            <option value="gemini">Google Gemini (/v1beta/models/...:generateContent)</option>
+          </select>
+        </label>
+
+        <label class="field">
+          <span>API Base URL</span>
+          <input type="url" id="cfg-baseurl" spellcheck="false" placeholder="https://api.openai.com/v1">
+        </label>
+
+        <label class="field">
+          <span>API Key</span>
+          <div class="secret-row">
+            <input type="password" id="cfg-apikey" spellcheck="false" autocomplete="off" placeholder="sk-...">
+            <button type="button" id="btn-toggle-key" class="btn btn-ghost btn-sm">显示</button>
+          </div>
+        </label>
+
+        <div class="two-col">
+          <label class="field">
+            <span>模型名称 (Model ID)</span>
+            <input type="text" id="cfg-model" spellcheck="false" placeholder="gpt-4o-mini">
+          </label>
+          <label class="field">
+            <span>默认优化风格</span>
+            <select id="cfg-default-style">
+              <option value="enhanced">🌟 智能增强 (Meowv)</option>
+              <option value="coding">💻 编程任务 (Coding)</option>
+              <option value="structured">📐 结构化 (Structured)</option>
+              <option value="concise">⚡ 简洁紧致 (Concise)</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="prompt-blocks">
+          <div class="prompt-block">
+            <div class="prompt-head">
+              <span>🌟 智能增强 (enhanced) · System Prompt</span>
+              <button type="button" class="btn-link" data-reset-prompt="enhanced">恢复默认</button>
+            </div>
+            <textarea id="sp-enhanced" rows="4"></textarea>
+          </div>
+          <div class="prompt-block">
+            <div class="prompt-head">
+              <span>💻 编程任务 (coding) · System Prompt</span>
+              <button type="button" class="btn-link" data-reset-prompt="coding">恢复默认</button>
+            </div>
+            <textarea id="sp-coding" rows="4"></textarea>
+          </div>
+          <div class="prompt-block">
+            <div class="prompt-head">
+              <span>📐 结构化 (structured) · System Prompt</span>
+              <button type="button" class="btn-link" data-reset-prompt="structured">恢复默认</button>
+            </div>
+            <textarea id="sp-structured" rows="4"></textarea>
+          </div>
+          <div class="prompt-block">
+            <div class="prompt-head">
+              <span>⚡ 简洁紧致 (concise) · System Prompt</span>
+              <button type="button" class="btn-link" data-reset-prompt="concise">恢复默认</button>
+            </div>
+            <textarea id="sp-concise" rows="4"></textarea>
+          </div>
+        </div>
+
+        <div id="settings-status" class="status-line"></div>
+
+        <div class="settings-actions">
+          <button type="button" id="btn-test-conn" class="btn btn-secondary">⚡ 测试连接</button>
+          <button type="button" id="btn-save-settings" class="btn btn-primary">💾 保存设置</button>
+        </div>
+      </div>
+    </section>
+
+    <div id="toast" class="toast hidden" role="status"></div>
+  </div>
+  <script src="/app.js"></script>
+</body>
+</html>

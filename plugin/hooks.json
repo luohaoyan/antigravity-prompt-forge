@@ -1,0 +1,12 @@
+{
+  "prompt-optimize-dialog-hook": {
+    "enabled": true,
+    "PreInvocation": [
+      {
+        "type": "command",
+        "command": "node ./hooks/pre_invocation.mjs",
+        "timeout": 45
+      }
+    ]
+  }
+}

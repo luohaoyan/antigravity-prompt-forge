@@ -1,0 +1,54 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Syntax gate
+        shell: pwsh
+        run: |
+          $files = @(
+            'installer/install.mjs',
+            'loader/patch-composer-asar.mjs',
+            'plugin/hooks/pre_invocation.mjs',
+            'plugin/shared/core.mjs',
+            'plugin/sidecars/panel/main.mjs',
+            'plugin/sidecars/panel/app.js'
+          )
+          foreach ($f in $files) {
+            node --check $f
+            if ($LASTEXITCODE -ne 0) { throw "syntax check failed: $f" }
+          }
+
+      - name: Build zip
+        shell: pwsh
+        run: |
+          $tag = if ('${{ github.ref_name }}') { '${{ github.ref_name }}' } else { 'dev' }
+          Compress-Archive -Path ./* -DestinationPath "antigravity-prompt-optimize-$tag.zip" -CompressionLevel Optimal -Force
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-zip
+          path: antigravity-prompt-optimize-*.zip
+
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: antigravity-prompt-optimize-*.zip
+          generate_release_notes: true

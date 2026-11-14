@@ -1,0 +1,20 @@
+# 依赖与构建产物
+installer/node_modules/
+node_modules/
+dist/
+*.asar
+*.asar.patched
+*.asar.bak
+*.bak-*
+*.log
+
+# 用户私有数据（绝不上传）
+plugin/data/
+data/settings.json
+data/history.json
+data/hook_state.json
+
+# 系统垃圾
+Thumbs.db
+.DS_Store
+desktop.ini
