@@ -83,7 +83,8 @@
     originalText: null,
     optimizedText: null,
     abortCtrl: null,
-    toastTimer: 0
+    toastTimer: 0,
+    lastSeenText: ""          // 上一帧输入框内容，用于识别"已发送"（非空 → 空）
   };
 
   // ---------- 调度器：全局唯一，绝不并发重入 ----------
@@ -516,6 +517,43 @@
     return String(out || "").replace(/^<(think|thinking)>[\s\S]*?<\/\1>\s*/i, "").trim();
   }
 
+  // ---------- 发送检测与状态复位 ----------
+  // 消息发出去以后，本次增强会话就结束了：必须回到 ✨ 增强 的空闲态，
+  // 否则按钮会一直显示「↩ 还原」，用户点它就会把上一轮的旧草稿重新灌进新输入框。
+  function resetToIdle(silent) {
+    var was = state.mode;
+    state.mode = "idle";
+    state.originalText = null;
+    state.optimizedText = null;
+    state.lastSeenText = "";
+    refreshButton();
+    if (!silent && was === "optimized") showToast("✨ 已发送，增强会话已结束");
+  }
+
+  function inputIsEmpty(el) {
+    try {
+      return !String(readInputText(el) || "").replace(/\s+/g, "");
+    } catch (_e) {
+      return false;
+    }
+  }
+
+  // 判定"这一轮对话已经发出"：输入框被平台清空，而本轮确实处于优化态
+  function maybeMarkSent() {
+    if (state.mode !== "optimized" || state.loading) return;
+    var el = findChatInput();
+    if (!el) return;
+    if (!inputIsEmpty(el)) return;
+    var btn = document.querySelector("[" + BTN_ATTR + "]");
+    if (!btn || btn.getAttribute("data-state") !== "optimized") return;
+    // 发送后平台会先清空输入框再渲染消息，延迟一帧确认，避免"清空瞬间"误判
+    setTimeout(function () {
+      if (state.mode !== "optimized" || state.loading) return;
+      var el2 = findChatInput();
+      if (el2 && inputIsEmpty(el2)) resetToIdle(true);
+    }, 350);
+  }
+
   // ---------- 交互 ----------
   async function onButtonClick(e) {
     e.preventDefault();
@@ -527,9 +565,19 @@
     var inputEl = findChatInput();
     if (!inputEl) { showToast("未找到当前对话框输入区"); return; }
     if (state.mode === "optimized" && state.originalText != null) {
+      var nowText = String(readInputText(inputEl) || "");
+      var stillThisRound = state.optimizedText != null &&
+        String(state.optimizedText).trim() === nowText.trim();
+      if (!stillThisRound) {
+        // 本轮结果已经不在输入框里（刚发出去 / 用户已改过）：只复位状态，绝不把旧草稿写回去
+        resetToIdle(true);
+        showToast("✨ 已回到增强态（上一轮内容已不在此输入框，未改动）");
+        return;
+      }
       writeInputText(inputEl, state.originalText);
       state.mode = "idle";
       state.originalText = null;
+      state.optimizedText = null;
       refreshButton();
       showToast("↩ 已还原原始提示词");
       return;
@@ -825,6 +873,8 @@
       host.appendChild(btn);
     }
     if (!state.loading && btn.getAttribute("data-state") === null) refreshButton(btn);
+    // 每帧顺带检测"内容被清空 = 已发送"，作为 Enter / 点发送按钮之外的兜底
+    try { maybeMarkSent(); } catch (_eSent) {}
 
     var box = findComposerBox(input) || input;
     var boxRect = rectOf(box);
@@ -890,6 +940,40 @@
         });
       }
     } catch (_e) {}
+
+    // 0.5) 发送检测：回车发送（非 Shift）和点击右侧发送按钮，都在捕获阶段监听，
+    //      只做"标记发送"，不阻断事件，因此对平台行为零影响。
+    try {
+      document.addEventListener("keydown", function (ev) {
+        if (!ev || ev.key !== "Enter" || ev.shiftKey || ev.isComposing) return;
+        var el = findChatInput();
+        if (!el) return;
+        var t = ev.target;
+        if (!t || !(el === t || (el.contains && el.contains(t)))) return;
+        setTimeout(function () { maybeMarkSent(); }, 60);
+        setTimeout(function () { maybeMarkSent(); }, 600);
+      }, true);
+    } catch (_eKd) {}
+
+    try {
+      document.addEventListener("click", function (ev) {
+        if (state.mode !== "optimized") return;
+        var t = ev.target;
+        if (!t || !t.closest) return;
+        var box = findChatInput();
+        var composer = box ? (findComposerBox(box) || box) : null;
+        if (!composer || !composer.contains(t)) return;
+        // 只关心"发送按钮"这一行：位于 composer 底部工具行、且在输入框右侧区域
+        var br = t.getBoundingClientRect ? t.getBoundingClientRect() : null;
+        if (!br) return;
+        var boxRect = composer.getBoundingClientRect();
+        if (br.top < boxRect.bottom - 60) return;
+        if (br.left < boxRect.left + boxRect.width * 0.6) return;
+        if (t.closest("[" + BTN_ATTR + "]") || t.closest("[" + PANEL_ATTR + "]")) return;
+        setTimeout(function () { maybeMarkSent(); }, 80);
+        setTimeout(function () { maybeMarkSent(); }, 700);
+      }, true);
+    } catch (_eClk) {}
 
     // 1) 被动跟随：窗口尺寸变化 / 滚动（全部 passive + rAF 合并）
     window.addEventListener("resize", function () { beginGeoEpoch(); requestEnsure(true); }, { passive: true });
